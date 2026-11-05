@@ -1,0 +1,13 @@
+{
+  "name": "3dchemie",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "WebXR-Plattform zur Visualisierung chemischer Reaktionsmechanismen für den Chemieunterricht",
+  "license": "MIT",
+  "scripts": {
+    "start": "node serve.mjs",
+    "test": "node test/run.mjs",
+    "build": "node build.mjs"
+  }
+}
