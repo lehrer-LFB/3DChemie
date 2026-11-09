@@ -62,6 +62,68 @@ check(Math.abs(lab.rotation.y - ry0 + Math.PI / 6) < 1e-9, 'Snap-Turn: 30°');
 input.resetView();
 check(lab.position.distanceTo(new THREE.Vector3(0, 1.15, -0.6)) < 1e-9 && lab.scale.x === 0.1 && lab.rotation.y === 0, 'Ansicht zurücksetzen');
 
+// ---------- Handtracking: Greifen mit Daumen und Zeigefinger ----------
+// simulierte Gelenke je Hand
+for (const st of input.ctrls) {
+  const J = {};
+  for (const n of ['wrist', 'thumb-tip', 'index-finger-tip']) { J[n] = new THREE.Object3D(); scene.add(J[n]); }
+  st.hand.joints = J;
+  st.src = { hand: {} };
+  st.ctrl.position.set(0, 0, 0); st.ctrl.rotation.set(0, Math.PI, 0); // Strahl zeigt weg von den Molekülen
+  st.ctrl.updateMatrixWorld(true);
+}
+const setHand = (st, center, gap) => {
+  const J = st.hand.joints;
+  J.wrist.position.copy(center).add(new THREE.Vector3(0, -0.02, 0.08));
+  J['thumb-tip'].position.copy(center).add(new THREE.Vector3(-gap / 2, 0, 0));
+  J['index-finger-tip'].position.copy(center).add(new THREE.Vector3(gap / 2, 0, 0));
+  for (const j of Object.values(J)) j.updateMatrixWorld(true);
+};
+const step = () => input.update(1 / 72);
+const [hA, hB] = input.ctrls;
+const atomW = (i) => world(sim.atoms[i].p);
+const oId = sim.atoms.findIndex((a) => a.el === 'O');
+const frag = [...sim.fragmentOf(oId)];
+
+// offene Hand am Sauerstoff: nichts gegriffen, Atom in Reichweite hervorgehoben
+setHand(hA, atomW(oId), 0.06); step();
+check(input.grabs.length === 0, 'Hand: offene Hand greift nicht');
+check(input.view.hover.has(oId), 'Hand: Molekül in Reichweite wird hervorgehoben');
+// Pinch am Atom greift das ganze Molekül
+setHand(hA, atomW(oId), 0.01); step();
+const g = input.grabs.find((x) => x.owner === 'hand0');
+check(!!g && frag.every((i) => g.ids.includes(i)), 'Hand: Pinch am Atom greift das ganze Molekül');
+// Hand bewegen: Molekül folgt
+const before = atomW(oId), move = new THREE.Vector3(0.1, 0.05, -0.08);
+setHand(hA, before.clone().add(move), 0.01); step();
+check(near(atomW(oId), before.clone().add(move), 1e-4), 'Hand: Molekül folgt den Fingern');
+// Hysterese: 3 cm Fingerabstand hält noch fest
+setHand(hA, before.clone().add(move), 0.03); step();
+check(input.grabs.some((x) => x.owner === 'hand0'), 'Hand: 3 cm Fingerabstand lässt noch nicht los');
+// Öffnen lässt los
+setHand(hA, before.clone().add(move), 0.06); step();
+check(!input.grabs.some((x) => x.owner === 'hand0') && !sim.atoms[oId].kin, 'Hand: Öffnen lässt das Molekül los');
+
+// Pinch 10 cm neben dem Molekül: kein Griff, sondern Raum-Geste
+input.resetView();
+const far = atomW(oId).add(new THREE.Vector3(0, 0.35, 0.1));
+setHand(hA, far, 0.06); step();
+setHand(hA, far, 0.01); step();
+check(!input.grabs.length && hA.worldGrab, 'Hand: Pinch ins Leere greift den Molekülraum');
+const p0 = world(P);
+setHand(hA, far.clone().add(new THREE.Vector3(0.05, 0, 0)), 0.01); step();
+check(near(world(P), p0.clone().add(new THREE.Vector3(0.05, 0, 0)), 1e-5), 'Hand: eine Hand verschiebt den Molekülraum');
+// zweite Hand dazu, auseinanderziehen = zoomen
+const farB = far.clone().add(new THREE.Vector3(0.3, 0, 0));
+setHand(hB, farB, 0.06); step();
+setHand(hB, farB, 0.01); step();
+const s0 = lab.scale.x;
+setHand(hB, farB.clone().add(new THREE.Vector3(0.3, 0, 0)), 0.01); step();
+check(lab.scale.x > s0 * 1.5, `Hand: zwei Hände zoomen (Maßstab ${s0.toFixed(3)} → ${lab.scale.x.toFixed(3)})`);
+setHand(hA, far, 0.06); setHand(hB, farB, 0.06); step();
+check(!hA.worldGrab && !hB.worldGrab && input.world === null, 'Hand: Öffnen beendet die Raum-Geste');
+input.resetView();
+
 out.push(fails ? `${fails} FEHLER` : 'Alle Tests bestanden.');
 document.getElementById('out').textContent = out.join('\n');
 document.title = fails ? 'FAIL' : 'OK';

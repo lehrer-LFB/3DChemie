@@ -7,12 +7,20 @@
 //      Ansicht: Thumbstick links/rechts = Molekülraum in 30°-Schritten drehen,
 //      Grip im leeren Raum = Molekülraum greifen (eine Hand: verschieben,
 //      zwei Hände: zusätzlich drehen und zoomen).
+// Hände (ohne Controller): Daumen und Zeigefinger am Atom zusammenführen =
+//      Molekül greifen (es folgt den Fingern und dreht mit der Hand); Pinch ins
+//      Leere = Molekülraum greifen (eine Hand verschieben, zwei Hände drehen/zoomen);
+//      Pinch mit dem Strahl auf Panel/fernes Atom = klicken bzw. aus der Ferne greifen.
 
 import * as THREE from 'three';
 import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
 import { XRHandModelFactory } from 'three/addons/webxr/XRHandModelFactory.js';
+import { ELEMENTS } from './sim.js';
 
 const NEAR_GRAB = 0.07; // m
+// Hände: Pinch zwischen Daumen- und Zeigefingerspitze (mit Hysterese gegen Flattern)
+const PINCH_ON = 0.02, PINCH_OFF = 0.04; // m
+const HAND_REACH = 0.03; // m vom Pinch-Punkt bis zur Atomoberfläche
 const SNAP_TURN = Math.PI / 6; // 30°
 const SCALE_MIN = 0.04, SCALE_MAX = 0.4; // 1 Å = 4 … 40 cm
 
@@ -203,7 +211,15 @@ export class Input {
       ctrl.add(line);
       const state = { i, ctrl, line, src: null, btnA: false, hoverAtom: null, turnArmed: true, worldGrab: false };
       ctrl.addEventListener('connected', (e) => { state.src = e.data; });
-      ctrl.addEventListener('disconnected', () => { state.src = null; this._releaseOwner(i); this._worldEnd(state); });
+      ctrl.addEventListener('disconnected', () => {
+        state.src = null;
+        state.pinching = false;
+        state.pinchPoint = null;
+        if (state.cursor) state.cursor.visible = false;
+        this._releaseOwner(i);
+        this._releaseOwner('hand' + i);
+        this._worldEnd(state);
+      });
       ctrl.addEventListener('selectstart', () => this._xrStart(state, true));
       ctrl.addEventListener('selectend', () => this._releaseOwner(i));
       ctrl.addEventListener('squeezestart', () => this._xrStart(state, false));
@@ -217,6 +233,19 @@ export class Input {
       hand.add(hmf.createHandModel(hand, 'mesh'));
       this.scene.add(hand);
       state.grip = grip;
+      state.hand = hand;
+      // Anker am Pinch-Punkt (gegriffene Moleküle hängen daran) und kleiner Cursor
+      state.anchor = new THREE.Object3D();
+      this.scene.add(state.anchor);
+      state.cursor = new THREE.Mesh(
+        new THREE.SphereGeometry(0.008, 16, 12),
+        new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8, depthTest: false }),
+      );
+      state.cursor.renderOrder = 20;
+      state.cursor.visible = false;
+      this.scene.add(state.cursor);
+      state.pinching = false;
+      state.pinchPoint = null;
       this.ctrls.push(state);
     }
   }
@@ -242,11 +271,33 @@ export class Input {
     return best;
   }
 
+  /** Atom, dessen Oberfläche höchstens `reach` (m) vom Weltpunkt entfernt ist */
+  _atomNearPoint(worldPos, reach) {
+    this.lab.updateMatrixWorld(true);
+    const local = this.lab.worldToLocal(worldPos.clone());
+    const scale = this.lab.scale.x;
+    let best = null, bestD = reach;
+    this.sim.atoms.forEach((a, i) => {
+      const d = (Math.hypot(a.p[0] - local.x, a.p[1] - local.y, a.p[2] - local.z) - ELEMENTS[a.el].radius) * scale;
+      if (d < bestD && this.canGrab(i)) { bestD = d; best = i; }
+    });
+    return best;
+  }
+
   _xrStart(state, isSelect) {
     const { ctrl, i } = state;
     const hit = this._rayFrom(ctrl);
     if (isSelect && hit && hit.object === this.ui.panel) {
       this.ui.clickUV(hit.uv);
+      return;
+    }
+    // Hände: Nahgriff und Raum-Geste übernimmt die eigene Pinch-Erkennung (_updateHand);
+    // über das System-„select“ nur noch Ferngriff per Strahl
+    if (state.src?.hand) {
+      const nearPinch = state.pinchPoint && this._atomNearPoint(state.pinchPoint, HAND_REACH) != null;
+      if (!nearPinch && hit && hit.object.userData.atom != null && this.canGrab(hit.object.userData.atom)) {
+        this._grab(i, ctrl, hit.object.userData.atom, true);
+      }
       return;
     }
     // Nahgriff: Atom in Reichweite der Hand/des Controllers
@@ -265,7 +316,50 @@ export class Input {
   // ---------- Ansicht in VR: Molekülraum greifen, drehen, zoomen ----------
 
   _handPos(st) {
+    // Hände: Pinch-Punkt zwischen den Fingerspitzen; Controller: Strahl-Ursprung
+    if (st.src?.hand && st.pinchPoint) return st.pinchPoint.clone();
     return new THREE.Vector3().setFromMatrixPosition(st.ctrl.matrixWorld);
+  }
+
+  /**
+   * Handtracking: Pinch-Punkt bestimmen, Anker nachführen, Pinch beginnen/beenden.
+   * Gibt das Atom zurück, das gerade in Reichweite ist (für die Hervorhebung).
+   */
+  _updateHand(st) {
+    const J = st.hand?.joints || {};
+    const thumb = J['thumb-tip'], index = J['index-finger-tip'], wrist = J['wrist'];
+    if (!thumb || !index || !wrist) { st.cursor.visible = false; st.pinchPoint = null; return null; }
+    const a = thumb.getWorldPosition(new THREE.Vector3());
+    const b = index.getWorldPosition(new THREE.Vector3());
+    const p = a.clone().add(b).multiplyScalar(0.5);
+    const gap = a.distanceTo(b);
+    st.pinchPoint = p;
+    st.anchor.position.copy(p);
+    st.anchor.quaternion.copy(wrist.getWorldQuaternion(new THREE.Quaternion()));
+    st.anchor.updateMatrixWorld(true);
+
+    const owner = 'hand' + st.i;
+    const near = this._atomNearPoint(p, HAND_REACH);
+    if (!st.pinching && gap < PINCH_ON) {
+      st.pinching = true;
+      if (near != null) {
+        this._grab(owner, st.anchor, near, false);
+      } else {
+        // ins Leere: Molekülraum greifen – außer der Strahl zielt auf Panel oder ein Atom
+        const hit = this._rayFrom(st.ctrl);
+        if (!hit) this._worldStart(st);
+      }
+    } else if (st.pinching && gap > PINCH_OFF) {
+      st.pinching = false;
+      this._releaseOwner(owner);
+      this._worldEnd(st);
+    }
+
+    const holding = this.grabs.some((g) => g.owner === owner);
+    st.cursor.visible = !holding;
+    st.cursor.position.copy(p);
+    st.cursor.material.color.setHex(st.worldGrab ? 0xffb74d : near != null ? 0x6dff8a : 0xffffff);
+    return holding || st.worldGrab ? null : near;
   }
 
   _worldStart(st) {
@@ -356,12 +450,14 @@ export class Input {
     const presenting = this.renderer.xr.isPresenting;
     this.ui.panel.visible = presenting;
     if (presenting) {
-      let anyHover = null;
+      let anyHover = null, handHover = null;
       let panelUV = null;
       for (const st of this.ctrls) {
-        if (!st.src) continue;
+        if (!st.src) { if (st.cursor) st.cursor.visible = false; continue; }
+        if (st.src.hand) { const h = this._updateHand(st); if (h != null) handHover = h; }
+        else if (st.cursor) st.cursor.visible = false;
         const gp = st.src.gamepad;
-        const grab = this.grabs.find((g) => g.owner === st.i);
+        const grab = this.grabs.find((g) => g.owner === st.i || g.owner === 'hand' + st.i);
         // Thumbstick: gegriffenes Molekül entlang des Strahls verschieben
         if (gp && grab && grab.ray) {
           const ay = gp.axes[3] ?? 0;
@@ -385,11 +481,14 @@ export class Input {
         else if (hit) anyHover = hit.object.userData.atom;
       }
       this.ui.setHover(panelUV);
-      this._hoverFragment(anyHover);
+      this._hoverFragment(handHover ?? anyHover);
       this._worldUpdate();
-    } else if (this.world) {
-      for (const st of this.ctrls) st.worldGrab = false;
-      this.world = null;
+    } else {
+      for (const st of this.ctrls) if (st.cursor) st.cursor.visible = false;
+      if (this.world) {
+        for (const st of this.ctrls) st.worldGrab = false;
+        this.world = null;
+      }
     }
     this._applyGrabs();
   }

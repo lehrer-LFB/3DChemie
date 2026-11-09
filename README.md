@@ -50,10 +50,10 @@ Zum Testen am Rechner ohne Brille eignet sich auch die Browser-Erweiterung
 
 | | Desktop / Smartboard | VR |
 |---|---|---|
-| Molekül greifen & bewegen | Atom anklicken und ziehen | Trigger/Pinch auf ein Atom (auch per Strahl aus der Ferne) oder Grip-Taste in der Nähe |
+| Molekül greifen & bewegen | Atom anklicken und ziehen | **Controller:** Trigger auf ein Atom (auch per Strahl aus der Ferne) oder Grip-Taste in der Nähe. **Hände:** Daumen und Zeigefinger direkt am Atom zusammenführen (ein weißer Punkt zwischen den Fingern wird grün, wenn ein Atom in Reichweite ist); das Molekül folgt den Fingern und dreht mit der Hand |
 | Molekül drehen | Rechtsklick oder Shift + ziehen | Hand drehen |
 | Molekül heranholen/wegschieben | – | Thumbstick vor/zurück (bei Strahl-Griff) |
-| Ansicht drehen / Zoom | Hintergrund ziehen / Mausrad | Um die Moleküle herumgehen (Spielbereich „Roomscale“). Oder: Thumbstick links/rechts dreht den Molekülraum in 30°-Schritten; **Grip-Taste ins Leere** greift den ganzen Molekülraum (eine Hand: verschieben, beide Hände: drehen und durch Auseinanderziehen zoomen, 1 Å = 4–40 cm) |
+| Ansicht drehen / Zoom | Hintergrund ziehen / Mausrad | Um die Moleküle herumgehen (Spielbereich „Roomscale“). Oder: Thumbstick links/rechts dreht den Molekülraum in 30°-Schritten; **Grip-Taste ins Leere** greift den ganzen Molekülraum (eine Hand: verschieben, beide Hände: drehen und durch Auseinanderziehen zoomen, 1 Å = 4–40 cm). **Ohne Controller:** dasselbe mit Daumen-Zeigefinger-Pinch ins Leere |
 | Ansicht zurücksetzen | – | Panel „Ansicht zurücksetzen“ (auch automatisch bei jedem Neustart/Reaktionswechsel und beim Verlassen von VR) |
 
 **Startansicht:** Jede Szene wird beim Laden automatisch mittig vor der Person platziert (`src/framing.js`):
