@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "description": "WebXR-Plattform zur Visualisierung chemischer Reaktionsmechanismen für den Chemieunterricht",
-  "license": "MIT",
+  "license": "PolyForm-Noncommercial-1.0.0",
   "scripts": {
     "start": "node serve.mjs",
     "test": "node test/run.mjs",

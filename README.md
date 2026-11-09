@@ -1,5 +1,8 @@
 # 3D-Chemie – Reaktionen in VR
 
+**Lizenz:** frei für nichtkommerzielle Nutzung (Unterricht, Schulen, Hochschulen, private
+Nutzung). Kommerzielle Nutzung braucht meine Zustimmung – siehe [Lizenz](#lizenz) unten.
+
 **Online:** https://chemie-vr.das-rsg.de
 
 Schüler:innen greifen in VR (Meta Quest, Pico) oder am Rechner Moleküle, drehen sie und
@@ -162,7 +165,15 @@ bitte `npm test` ausführen.
 
 ## Lizenz
 
-* **Programmcode** (inklusive der in den Reaktionsmodulen enthaltenen Texte): [MIT-Lizenz](LICENSE)
+* **Programmcode** (inklusive der in den Reaktionsmodulen enthaltenen Texte):
+  [PolyForm Noncommercial License 1.0.0](LICENSE). Kurz gesagt: Nutzung, Kopieren, Verändern
+  und Weitergeben sind für **jeden nichtkommerziellen Zweck** frei erlaubt – das schließt
+  ausdrücklich Schulen, Hochschulen und andere Bildungs- und gemeinnützige Einrichtungen ein,
+  unabhängig von deren Finanzierung (siehe „Noncommercial Organizations" in der Lizenz).
+  Für eine **kommerzielle Nutzung** ist vorher meine Zustimmung nötig – bitte dazu ein
+  [Issue](../../issues) eröffnen. Diese Lizenz ist nicht OSI-anerkannt als „Open Source"
+  (sie ist „source-available"), lässt aber Einsicht, Änderung und nichtkommerzielle Weitergabe
+  vollständig zu.
 * **Dokumentation** (diese README, Screenshots): [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/deed.de),
   Namensnennung: Daniel von Laufenberg, Rhein-Sieg-Gymnasium
 
