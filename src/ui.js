@@ -18,6 +18,7 @@ const BUTTONS = [
   { id: 'o18', label: '¹⁸O-Markierung', toggle: 'show18O', when: (s) => s.reactionId === 'esterification' },
   { id: 'demo', label: 'Vorführen ▶▶' },
   { id: 'level', label: (s) => `Stufe: ${LEVELS[s.level].label} ⇄` },
+  { id: 'resetview', label: 'Ansicht zurücksetzen', when: (s) => s.xr },
 ];
 const labelOf = (b, s) => (typeof b.label === 'function' ? b.label(s) : b.label);
 const visible = (b, s) => (!b.levels || b.levels.includes(s.level)) && (!b.when || b.when(s));
@@ -50,7 +51,7 @@ export class UI {
       reaction: null, reactionTitle: '', reactionId: '', stepIndex: -1, stepDone: false, title: '', text: '',
       guidance: '', hint: '', counters: [], steps: [], scenarios: [],
       stepMode: false, showArrows: true, show18O: false, showPartials: true, showPi: false, piAvailable: false, waiting: false,
-      level: 'q2', panelPage: 'main',
+      level: 'q2', panelPage: 'main', xr: false,
     };
     this.hintTimer = 0;
     this._buildHTML();

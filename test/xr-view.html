@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><title>XR-Ansicht-Test</title>
+<script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }</script>
+</head><body><pre id="out">läuft …</pre>
+<script type="module">
+// Browser-Test der VR-Ansichtssteuerung (ohne Brille): simulierte Hände greifen den Molekülraum.
+import * as THREE from 'three';
+import { Input } from '../src/input.js';
+import { Sim } from '../src/sim.js';
+import { spawn } from '../src/molecules.js';
+const out = [];
+let fails = 0;
+const check = (c, m) => { out.push(`${c ? '✓' : '✗'} ${m}`); if (!c) fails++; };
+const scene = new THREE.Scene();
+const lab = new THREE.Group(); lab.position.set(0, 1.15, -0.6); lab.scale.setScalar(0.1); scene.add(lab);
+const sim = new Sim(); spawn(sim, 'ethanol', [1, 0, 0]);
+const fakeCtrl = () => { const o = new THREE.Object3D(); scene.add(o); return o; };
+const renderer = { xr: { isPresenting: true, getController: fakeCtrl, getControllerGrip: fakeCtrl, getHand: fakeCtrl }, domElement: document.createElement('canvas') };
+const input = new Input({ renderer, camera: new THREE.PerspectiveCamera(), scene, lab, sim, view: { pickables: [], hover: new Set() },
+  ui: { panel: Object.assign(new THREE.Object3D(), { visible: true }), setHover() {}, clickUV() {} }, controls: {}, mech: { busy: new Set(), next() {} } });
+const [h1, h2] = input.ctrls;
+const world = (local) => { lab.updateMatrixWorld(true); return lab.localToWorld(new THREE.Vector3(...local)); };
+const near = (a, b, e = 1e-6) => a.distanceTo(b) < e;
+const P = [1, 0.5, -0.3]; // ein Punkt im Molekülraum (Å)
+
+// eine Hand: verschieben
+h1.ctrl.position.set(0.3, 1.2, -0.3); h1.ctrl.updateMatrixWorld(true);
+const w0 = world(P);
+input._worldStart(h1);
+h1.ctrl.position.add(new THREE.Vector3(0.1, -0.05, 0.2)); h1.ctrl.updateMatrixWorld(true);
+input._worldUpdate();
+check(near(world(P), w0.clone().add(new THREE.Vector3(0.1, -0.05, 0.2))), 'eine Hand: Molekülraum folgt der Hand');
+
+// zweite Hand dazu: drehen + zoomen um die Handmitte
+h2.ctrl.position.set(0.7, 1.2, -0.3); h2.ctrl.updateMatrixWorld(true);
+input._worldStart(h2);
+const a0 = h1.ctrl.position.clone(), b0 = h2.ctrl.position.clone(), m0 = a0.clone().add(b0).multiplyScalar(0.5);
+const wBefore = world(P);
+// Hände um 90° um die Mitte drehen und Abstand verdoppeln
+const rot = (v, ang) => v.clone().sub(m0).applyAxisAngle(new THREE.Vector3(0, 1, 0), ang).multiplyScalar(2).add(m0);
+h1.ctrl.position.copy(rot(a0, Math.PI / 2)); h2.ctrl.position.copy(rot(b0, Math.PI / 2));
+h1.ctrl.updateMatrixWorld(true); h2.ctrl.updateMatrixWorld(true);
+input._worldUpdate();
+const expect = wBefore.clone().sub(m0).applyAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 2).multiplyScalar(2).add(m0);
+check(near(world(P), expect, 1e-5), 'zwei Hände: Drehung und Zoom um die Handmitte');
+check(Math.abs(lab.scale.x - 0.2) < 1e-9, `Zoom ×2 (Maßstab ${lab.scale.x.toFixed(3)})`);
+check(Math.abs(lab.rotation.x) < 1e-9 && Math.abs(lab.rotation.z) < 1e-9, 'Molekülraum bleibt aufrecht');
+// Zoom-Grenze
+h2.ctrl.position.copy(m0.clone().add(new THREE.Vector3(5, 0, 0))); h2.ctrl.updateMatrixWorld(true);
+input._worldUpdate();
+check(lab.scale.x <= 0.4 + 1e-9, 'Zoom begrenzt');
+input._worldEnd(h1); input._worldEnd(h2);
+check(input.world === null, 'Loslassen beendet die Geste');
+
+// Snap-Turn um den Molekülschwerpunkt
+const c = new THREE.Vector3(); for (const a of sim.atoms) c.add(new THREE.Vector3(...a.p)); c.divideScalar(sim.atoms.length);
+const cw0 = world(c.toArray()), ry0 = lab.rotation.y;
+input._snapTurn(1);
+check(near(world(c.toArray()), cw0, 1e-6), 'Snap-Turn: Schwerpunkt bleibt an seinem Platz');
+check(Math.abs(lab.rotation.y - ry0 + Math.PI / 6) < 1e-9, 'Snap-Turn: 30°');
+
+input.resetView();
+check(lab.position.distanceTo(new THREE.Vector3(0, 1.15, -0.6)) < 1e-9 && lab.scale.x === 0.1 && lab.rotation.y === 0, 'Ansicht zurücksetzen');
+
+out.push(fails ? `${fails} FEHLER` : 'Alle Tests bestanden.');
+document.getElementById('out').textContent = out.join('\n');
+document.title = fails ? 'FAIL' : 'OK';
+</script></body></html>

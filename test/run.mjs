@@ -6,6 +6,8 @@ import { Sim } from '../src/sim.js';
 import { Mechanism } from '../src/mechanism.js';
 import { loadScenario as loadItems } from '../src/molecules.js';
 import { reactionById } from '../src/reactions/index.js';
+import { unrelaxed, dihedral } from '../src/conformer.js';
+import { homeFor } from '../src/framing.js';
 import { V } from '../src/vec.js';
 
 let failures = 0;
@@ -52,6 +54,14 @@ const angle = (a, c, b) => {
   const v = V.norm(V.sub(sim.atoms[b].p, sim.atoms[c].p));
   return (Math.acos(V.dot(u, v)) * 180) / Math.PI;
 };
+
+/** alle Fragmente in günstigster Konformation? (nach Abschluss der Drehanimation) */
+const checkConformers = (label) => {
+  run(4);
+  const bad = sim.fragments.flatMap((f) => unrelaxed(sim, f).map((x) => `${sim.formula(f)} ${x}`));
+  check(bad.length === 0, `${label}: Konformationen optimal${bad.length ? ' – ' + bad.join('; ') : ''}`);
+};
+const dih = (a, b, c, d) => (dihedral(sim.atoms[a].p, sim.atoms[b].p, sim.atoms[c].p, sim.atoms[d].p) * 180) / Math.PI;
 
 const findAcyl = () => {
   for (let i = 0; i < sim.atoms.length; i++) { const a = mech.rx.acyl(i); if (a) return a; }
@@ -135,6 +145,15 @@ check(ester.type === 'ester' && ester.OX === etohO, 'Ethanol-Sauerstoff (¹⁸O)
 const water = findNuc('water');
 check(water && sim.atoms[water.o].tag.o18 !== true, 'Wasser-O stammt aus der Säure (nicht markiert)');
 check(sim.atoms[proton()].tag.catalyst === true, 'Freigesetztes H⁺ ist das Katalysator-Proton');
+checkConformers('Ester + Wasser');
+{
+  const e = findAcyl();
+  const xC = sim.nbrs(e.OX).find((x) => x.j !== e.c).j;
+  const ch3 = sim.nbrs(xC).find((x) => sim.atoms[x.j].el === 'C').j;
+  const d1 = dih(e.O1, e.c, e.OX, xC), d2 = dih(e.c, e.OX, xC, ch3);
+  console.log(`  Ester: O=C–O–C ${d1.toFixed(0)}°, C–O–C–C ${d2.toFixed(0)}°`);
+  check(Math.abs(d1) < 25 && Math.abs(Math.abs(d2) - 180) < 30, 'Ester in Z-Konformation, Ethylgruppe anti');
+}
 
 // ---------------- Hydrolyse (Rückreaktion mit dem entstandenen Wasser) ----------------
 console.log('\n== Hydrolyse ==');
@@ -155,6 +174,13 @@ check(mech.counts.hydrolysis === 1, 'Zähler Hydrolyse = 1');
 geometryReport('Ethansäure nach Hydrolyse');
 const etoh2 = findNuc('alcohol');
 check(etoh2.o === etohO, 'Ethanol enthält wieder seinen ursprünglichen Sauerstoff');
+checkConformers('Säure + Ethanol');
+{
+  const a = findAcyl();
+  const h = sim.nbrs(a.OX).find((x) => sim.atoms[x.j].el === 'H').j;
+  const d = dih(a.O1, a.c, a.OX, h);
+  check(Math.abs(d) < 25, `Ethansäure syn (O=C–O–H ${d.toFixed(0)}°)`);
+}
 
 // ---------------- Szenario Hydrolyse direkt ----------------
 console.log('\n== Szenario Hydrolyse ==');
@@ -268,6 +294,7 @@ const ff = (f) => `${sim.formula(f)}${sim.fragmentCharge(f) > 0 ? '+' : sim.frag
 const forms = sim.fragments.map(ff).sort();
 check(forms.includes('C4H10O') && forms.includes('H3O+') && forms.includes('Br-'), `SN1-Produkte: ${forms.join(', ')}`);
 check(mech.counts.sn1 === 1, 'Zähler SN1 = 1');
+checkConformers('SN1-Produkte');
 
 // Konkurrenz: zweites Halogenalkan, diesmal Eliminierung über β-H
 console.log('\n== SN1-Szenario, Konkurrenz E1 ==');
@@ -339,6 +366,7 @@ runUntilIdle();
 forms2 = sim.fragments.map(ff).sort();
 check(forms2.includes('C4H8') && forms2.filter((f) => f === 'H3O+').length === 1, `E1-Produkte: ${forms2.join(', ')}`);
 check(mech.counts.e1 === 1, 'Zähler E1 = 1');
+checkConformers('E1-Produkte');
 
 // ---------------- SN2 ----------------
 const tetraAvg = (c) => {
@@ -398,6 +426,8 @@ for (const scen of ['methyl', 'chiral']) {
   const side1 = umbrellaSide(sub.c, nu.o, eq);
   check(side0 === -1 && side1 === -1, 'Walden-Umkehr: Substituenten sind auf die andere Seite geklappt');
   if (scen === 'chiral') check(R().cip(sub.c) && R().cip(sub.c) !== before, `Konfiguration: (${before}) → (${R().cip(sub.c)})`);
+  checkConformers(`SN2-Produkte (${scen})`);
+  if (scen === 'chiral') check(R().cip(sub.c) === (before === 'R' ? 'S' : 'R'), 'Konfiguration bleibt nach dem Drehen erhalten');
 }
 
 // ---------------- Elektrophile Addition ----------------
@@ -458,6 +488,7 @@ check(sim.fragments.map(ff).sort().join() === 'C2H4Br2', `Produkt: ${sim.fragmen
   check(Math.abs(tetraAvg(cA) - 109.5) < 2.5 && Math.abs(tetraAvg(ion.c2) - 109.5) < 2.5, `beide C sp³ (${tetraAvg(cA).toFixed(1)}° / ${tetraAvg(ion.c2).toFixed(1)}°)`);
 }
 check(mech.counts.addition === 1, 'Zähler Addition = 1');
+checkConformers('1,2-Dibromethan');
 
 // ---------------- Radikalische Substitution ----------------
 console.log('\n== Radikalische Substitution ==');
@@ -465,7 +496,7 @@ loadScenario(sim, 'methane');
 mech.reset();
 run(0.5);
 const rf = () => sim.fragments.map(ff).sort().join(', ');
-check(rf() === 'Br2, Br2, Br2, CH4, CH4, CH4', `Start: ${rf()}`);
+check(rf() === 'Br2, Br2, Br2, CH4, CH4', `Start: ${rf()}`);
 check(!mech.seq, 'Ohne Licht keine Reaktion');
 const LAMP = R().constructor.lamp;
 let rb = findIdx((i) => R().bromine(i));
@@ -521,6 +552,7 @@ check(mech.seq?.kind === 'termination', 'Zwei Radikale → Kettenabbruch');
 runUntilIdle();
 check(R().radicals().length === 0 && rf().split(', ').filter((f) => f === 'Br2').length === 2, `Br₂ zurückgebildet: ${rf()}`);
 check(mech.counts.term === 1, 'Zähler Abbruch = 1');
+checkConformers('Radikal-Produkte');
 
 // ---------------- Elektrophile aromatische Substitution ----------------
 console.log('\n== Elektrophile aromatische Substitution ==');
@@ -593,6 +625,32 @@ run(1.5);
   check(!!f, 'FeBr₃ zurückgebildet (Katalysator)');
 }
 check(mech.counts.sear === 1, 'Zähler = 1');
+checkConformers('Brombenzol');
+
+// ---------------- Alle Startmoleküle ----------------
+console.log('\n== Startansicht (VR) ==');
+for (const key of ['esterification', 'hydrolysis', 'sn1', 'e1', 'methyl', 'chiral', 'ethene', 'methane', 'benzene']) {
+  loadScenario(sim, key);
+  const def = mech.def;
+  const { pos, scale } = homeFor(sim.atoms.map((a) => a.p), def.lamp);
+  const W = (p) => [pos[0] + p[0] * scale, pos[1] + p[1] * scale, pos[2] + p[2] * scale];
+  const ws = sim.atoms.map((a) => W(a.p));
+  const front = Math.max(...ws.map((w) => w[2]));
+  const xs = ws.map((w) => w[0]);
+  if (def.lamp) xs.push(pos[0] + (def.lamp.x - def.lamp.radius) * scale, pos[0] + (def.lamp.x + def.lamp.radius) * scale);
+  const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
+  const top = def.lamp ? pos[1] + (def.lamp.top + 0.3) * scale : Math.max(...ws.map((w) => w[1]));
+  console.log(`  ${key.padEnd(15)} Maßstab ${scale}, vorderstes Atom ${(-front).toFixed(2)} m vor dir, Breite ${(Math.max(...xs) - Math.min(...xs)).toFixed(2)} m, höchster Punkt ${top.toFixed(2)} m${def.lamp ? ' (Lampe)' : ''}`);
+  check(scale === 0.1 && -front >= 0.449 && Math.abs(cx) < 0.15 && top < 1.5, `${key}: gleicher Maßstab, mittig, ≥ 45 cm Abstand, nichts auf Augenhöhe`);
+}
+
+console.log('\n== Startkonformationen ==');
+for (const key of ['esterification', 'hydrolysis', 'sn1', 'e1', 'methyl', 'chiral', 'ethene', 'methane', 'benzene']) {
+  loadScenario(sim, key);
+  mech.reset();
+  const bad = sim.fragments.flatMap((f) => unrelaxed(sim, f).map((x) => `${sim.formula(f)} ${x}`));
+  check(bad.length === 0, `${key}: Edukte in günstigster Konformation${bad.length ? ' – ' + bad.join('; ') : ''}`);
+}
 
 console.log('\nAblauf:', log.map((l) => l.slice(0, 60)).join(' → '));
 console.log(failures ? `\n${failures} FEHLER` : '\nAlle Tests bestanden.');

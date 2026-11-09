@@ -2,6 +2,8 @@
 // aktiven Reaktion aus (Pfeile zeigen → Bindungen umbauen → Pause) und ruft im
 // Leerlauf deren Erkennungsregeln auf. Die Chemie steckt in src/reactions/*.js.
 
+import { optimizeAnimated } from './conformer.js';
+
 // Stufen: EF = vereinfachter Ablauf (alle drei Teilchen zusammenbringen, eine
 // kurze Animation), Q2 = vollständiger Mechanismus in fünf Schritten.
 export const LEVELS = {
@@ -156,6 +158,10 @@ export class Mechanism {
   _finish() {
     const q = this.seq;
     this.seq = null;
+    // Produkte in ihre energetisch günstigste Konformation drehen
+    this.sim.ensureTopo();
+    const frags = new Set([...this.busy].map((i) => this.sim.frag[i]));
+    for (const f of frags) if (this.sim.fragments[f]) optimizeAnimated(this.sim, this.sim.fragments[f]);
     this.busy.clear();
     this.status.stepDone = true;
     q.done?.();

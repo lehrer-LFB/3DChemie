@@ -10,7 +10,7 @@ import { COLORS } from '../mechanism.js';
 import { ReactionBase, near } from './base.js';
 
 const T = { abstraction: 1.9, bromination: 2.5, termination: 2.2 };
-const LAMP = { x: -1.6, z: -1.6, radius: 1.5, top: 4.2, bottom: -3.5 };
+const LAMP = { x: -2.6, z: -0.8, radius: 1.5, top: 3.2, bottom: -2.6 };
 
 export class RadicalSubstitution extends ReactionBase {
   static id = 'radical';
@@ -22,12 +22,12 @@ export class RadicalSubstitution extends ReactionBase {
     methane: {
       label: 'Methan + Brom',
       items: [
-        ['methane', [0.6, 0.8, 0.2]],
-        ['methane', [3.4, 2.2, -1.6]],
-        ['methane', [0.2, 2.6, -3.6]],
-        ['bromine', [4.2, -1.8, 1.8], [0, 0.4, 0.2]],
-        ['bromine', [0.2, -2.6, 3.0], [0, -0.3, 0.1]],
-        ['bromine', [6.0, 0.4, -0.8], [0, 1.2, -0.2]],
+        // 2 Methan + 3 Brom: Start + zwei vollständige Kettenzyklen (weitere über „+ Edukte“)
+        ['methane', [3.3, 1.4, 1.2]],
+        ['methane', [0.5, -0.3, -2.3]],
+        ['bromine', [5.0, -1.5, -1.9], [0, 0.4, 0.2]],
+        ['bromine', [0.8, -1.2, 1.8], [0, 1.2, -0.2]],
+        ['bromine', [5.3, 1.9, -1.8], [0, -0.3, 0.1]],
       ],
     },
   };

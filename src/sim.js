@@ -133,11 +133,22 @@ export class Sim {
       }
       return s;
     });
+    // 1,4-Paare (drei Bindungen auseinander) dürfen sich näher kommen – sonst
+    // würden syn-/gauche-Konformationen (z. B. O=C–O–H) herausgedrückt
+    const near3 = near.map((s) => {
+      const t = new Set(s);
+      for (const k of s) for (const { j } of this.adj[k]) t.add(j);
+      return t;
+    });
     this.pairs = [];
     for (let i = 0; i < n; i++) {
       for (let j = i + 1; j < n; j++) {
         if (near[i].has(j)) continue;
         const hi = this.atoms[i].el === 'H', hj = this.atoms[j].el === 'H';
+        if (this.frag[i] === this.frag[j] && near3[i].has(j)) {
+          this.pairs.push([i, j, hi && hj ? 1.8 : hi || hj ? 2.0 : 2.2, 0.3]);
+          continue;
+        }
         // Innerhalb eines Moleküls: sterische Abstoßung (verhindert Verknäulen).
         // Zwischen Molekülen nur schwach – sonst schiebt ein herangeführtes
         // Molekül seinen Reaktionspartner vor sich her.

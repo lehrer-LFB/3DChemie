@@ -5,6 +5,7 @@ import { Sim } from './sim.js';
 import { Mechanism } from './mechanism.js';
 import { loadScenario, spawnReactants } from './molecules.js';
 import { REACTIONS, reactionById } from './reactions/index.js';
+import { homeFor, FRAME } from './framing.js';
 import { MoleculeView } from './view.js';
 import { UI } from './ui.js';
 import { Input } from './input.js';
@@ -27,9 +28,9 @@ scene.fog = new THREE.Fog(0x141a2a, 6, 18);
 const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.01, 50);
 // Desktop-Ansicht leicht nach links versetzt, damit die Infokarte nichts verdeckt
 const wide = window.innerWidth > 900;
-camera.position.set(wide ? -0.28 : 0, 1.55, 0.6);
+camera.position.set(wide ? -0.28 : 0, 1.55, FRAME.depth + 1.2);
 const controls = new OrbitControls(camera, renderer.domElement);
-controls.target.set(wide ? -0.28 : 0, 1.12, -0.6);
+controls.target.set(wide ? -0.28 : 0, FRAME.height - 0.03, FRAME.depth);
 controls.enableDamping = true;
 controls.update();
 
@@ -83,6 +84,9 @@ function restart(key) {
   const def = mech.def;
   scenarioKey = key in def.scenarios ? key : Object.keys(def.scenarios)[0];
   loadScenario(sim, def.scenarios[scenarioKey].items);
+  // Startansicht: Szene mittig, immer gleicher Maßstab, Mindestabstand zur Person
+  input.setHome(homeFor(sim.atoms.map((a) => a.p), def.lamp));
+  input.resetView();
   mech.reset();
   ui.set({ title: `Bereit: ${def.scenarios[scenarioKey].label}`, text: '', stepIndex: -1, reaction: null });
 }
@@ -126,6 +130,9 @@ const ui = new UI((action) => {
       break;
     case 'partials':
       showPartials = !showPartials;
+      break;
+    case 'resetview':
+      input.resetView();
       break;
     case 'pi':
       showPi = !showPi;
@@ -182,6 +189,7 @@ function syncUI() {
     show18O: view.show18O,
     showPartials,
     showPi,
+    xr: renderer.xr.isPresenting,
     piAvailable: !!mech.def?.pi && mech.level === 'q2',
     level: mech.level,
     waiting: mech.waitingForNext,
@@ -189,6 +197,8 @@ function syncUI() {
 }
 
 input = new Input({ renderer, camera, scene, lab, sim, view, ui, controls, mech });
+// nach dem Verlassen von VR wieder die normale Desktop-Ansicht
+renderer.xr.addEventListener('sessionend', () => input.resetView());
 
 // VR-Panel links vor der Person, leicht zugewandt
 ui.panel.position.set(-0.72, 1.35, -0.42);
@@ -266,4 +276,4 @@ window.addEventListener('resize', () => {
 });
 
 // Für Experimente in der Browser-Konsole
-Object.assign(window, { sim, mech, view, demo });
+Object.assign(window, { sim, mech, view, demo, input });

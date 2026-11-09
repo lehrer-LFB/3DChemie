@@ -25,7 +25,7 @@ export class SEAr extends ReactionBase {
       items: [
         ['benzene', [-2.2, 0.6, -1.8], [-1.0, 0.2, 0]],
         ['ironBromide', [3.2, -2.0, 1.6], [-0.6, 0.4, 0]],
-        ['bromine', [3.4, 3.0, -1.0], [0, 0.6, 0.4]],
+        ['bromine', [3.6, 2.0, -1.4], [0, 0.6, 0.4]],
       ],
     },
   };

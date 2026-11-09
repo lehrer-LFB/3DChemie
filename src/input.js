@@ -4,12 +4,17 @@
 // VR:  Trigger/Pinch auf ein Atom (auch per Strahl aus der Ferne) = greifen,
 //      Grip-Taste in der Nähe = greifen, Thumbstick vor/zurück = gegriffenes
 //      Molekül wegschieben/heranholen, A/X = "Weiter" im Schrittmodus.
+//      Ansicht: Thumbstick links/rechts = Molekülraum in 30°-Schritten drehen,
+//      Grip im leeren Raum = Molekülraum greifen (eine Hand: verschieben,
+//      zwei Hände: zusätzlich drehen und zoomen).
 
 import * as THREE from 'three';
 import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
 import { XRHandModelFactory } from 'three/addons/webxr/XRHandModelFactory.js';
 
 const NEAR_GRAB = 0.07; // m
+const SNAP_TURN = Math.PI / 6; // 30°
+const SCALE_MIN = 0.04, SCALE_MAX = 0.4; // 1 Å = 4 … 40 cm
 
 export class Input {
   constructor({ renderer, camera, scene, lab, sim, view, ui, controls, mech }) {
@@ -18,6 +23,8 @@ export class Input {
     this.grabs = [];
     this.tmpM = new THREE.Matrix4();
     this.tmpV = new THREE.Vector3();
+    this.world = null; // Greifen des ganzen Molekülraums
+    this.home = { pos: new THREE.Vector3(0, 1.15, -0.6), scale: 0.1 }; // Startansicht der Szene
     this._setupDesktop();
     this._setupXR();
   }
@@ -194,13 +201,13 @@ export class Input {
       const line = new THREE.Line(lineGeo, new THREE.LineBasicMaterial({ color: 0x9fd3ff, transparent: true, opacity: 0.7 }));
       line.scale.z = 2;
       ctrl.add(line);
-      const state = { i, ctrl, line, src: null, btnA: false, hoverAtom: null };
+      const state = { i, ctrl, line, src: null, btnA: false, hoverAtom: null, turnArmed: true, worldGrab: false };
       ctrl.addEventListener('connected', (e) => { state.src = e.data; });
-      ctrl.addEventListener('disconnected', () => { state.src = null; this._releaseOwner(i); });
+      ctrl.addEventListener('disconnected', () => { state.src = null; this._releaseOwner(i); this._worldEnd(state); });
       ctrl.addEventListener('selectstart', () => this._xrStart(state, true));
       ctrl.addEventListener('selectend', () => this._releaseOwner(i));
       ctrl.addEventListener('squeezestart', () => this._xrStart(state, false));
-      ctrl.addEventListener('squeezeend', () => this._releaseOwner(i));
+      ctrl.addEventListener('squeezeend', () => { this._releaseOwner(i); this._worldEnd(state); });
       this.scene.add(ctrl);
 
       const grip = xr.getControllerGrip(i);
@@ -249,7 +256,100 @@ export class Input {
     // Ferngriff per Strahl
     if (hit && hit.object.userData.atom != null && this.canGrab(hit.object.userData.atom)) {
       this._grab(i, ctrl, hit.object.userData.atom, true);
+      return;
     }
+    // Grip ins Leere: den ganzen Molekülraum greifen
+    if (!isSelect) this._worldStart(state);
+  }
+
+  // ---------- Ansicht in VR: Molekülraum greifen, drehen, zoomen ----------
+
+  _handPos(st) {
+    return new THREE.Vector3().setFromMatrixPosition(st.ctrl.matrixWorld);
+  }
+
+  _worldStart(st) {
+    st.worldGrab = true;
+    st.line.material.color.setHex(0xffb74d);
+    this._worldReset();
+  }
+
+  _worldEnd(st) {
+    if (!st.worldGrab) return;
+    st.worldGrab = false;
+    st.line.material.color.setHex(0x9fd3ff);
+    this._worldReset();
+  }
+
+  /** Ausgangszustand für die laufende Greif-Geste neu festhalten (z. B. wenn eine Hand dazukommt) */
+  _worldReset() {
+    const hands = this.ctrls.filter((c) => c.worldGrab);
+    if (!hands.length) { this.world = null; return; }
+    for (const h of hands) h.ctrl.updateMatrixWorld(true);
+    const p = hands.map((h) => this._handPos(h));
+    const mid = p.length === 2 ? p[0].clone().add(p[1]).multiplyScalar(0.5) : p[0];
+    const d = p.length === 2 ? p[1].clone().sub(p[0]) : null;
+    this.world = {
+      hands, mid,
+      yaw0: d ? Math.atan2(d.x, d.z) : 0,
+      dist0: d ? Math.max(0.05, d.length()) : 1,
+      pos0: this.lab.position.clone(),
+      rotY0: this.lab.rotation.y,
+      scale0: this.lab.scale.x,
+    };
+  }
+
+  _worldUpdate() {
+    const w = this.world;
+    if (!w) return;
+    const p = w.hands.map((h) => this._handPos(h));
+    if (p.length === 1) {
+      this.lab.position.copy(w.pos0).add(p[0].clone().sub(w.mid));
+      return;
+    }
+    const mid = p[0].clone().add(p[1]).multiplyScalar(0.5);
+    const d = p[1].clone().sub(p[0]);
+    const yaw = Math.atan2(d.x, d.z) - w.yaw0;
+    const s = THREE.MathUtils.clamp((w.scale0 * d.length()) / w.dist0, SCALE_MIN, SCALE_MAX);
+    // Molekülraum um den Mittelpunkt der Hände drehen und skalieren, aufrecht halten
+    const rel = w.pos0.clone().sub(w.mid).multiplyScalar(s / w.scale0).applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+    this.lab.position.copy(mid).add(rel);
+    this.lab.rotation.set(0, w.rotY0 + yaw, 0);
+    this.lab.scale.setScalar(s);
+  }
+
+  /** Molekülraum um seine Mitte drehen (Snap-Turn) */
+  _snapTurn(dir) {
+    // Drehpunkt: Schwerpunkt der Moleküle (in Weltkoordinaten)
+    const A = this.sim.atoms;
+    const c = new THREE.Vector3();
+    if (A.length) {
+      for (const a of A) c.add(new THREE.Vector3(...a.p));
+      c.divideScalar(A.length);
+    }
+    this.lab.updateMatrixWorld(true);
+    const pivot = this.lab.localToWorld(c);
+    const ang = -dir * SNAP_TURN;
+    const rel = this.lab.position.clone().sub(pivot).applyAxisAngle(new THREE.Vector3(0, 1, 0), ang);
+    this.lab.position.copy(pivot).add(rel);
+    this.lab.rotation.y += ang;
+    this._worldReset();
+  }
+
+  /** Ansicht zurücksetzen */
+  /** Startansicht der aktuellen Szene festlegen ({ pos: [x, y, z], scale }) */
+  setHome({ pos, scale }) {
+    this.home.pos.set(...pos);
+    this.home.scale = scale;
+  }
+
+  resetView() {
+    for (const st of this.ctrls || []) st.worldGrab = false;
+    this.world = null;
+    this.lab.position.copy(this.home.pos);
+    this.lab.rotation.set(0, 0, 0);
+    this.lab.scale.setScalar(this.home.scale);
+    this._worldReset();
   }
 
   update(dt) {
@@ -267,12 +367,18 @@ export class Input {
           const ay = gp.axes[3] ?? 0;
           if (Math.abs(ay) > 0.15) for (const l of grab.locals) l.z += ay * dt * 0.8;
         }
+        // Thumbstick links/rechts: Molekülraum in 30°-Schritten drehen
+        if (gp) {
+          const ax = gp.axes[2] ?? 0;
+          if (st.turnArmed && Math.abs(ax) > 0.7) { this._snapTurn(Math.sign(ax)); st.turnArmed = false; }
+          else if (Math.abs(ax) < 0.3) st.turnArmed = true;
+        }
         // A / X = Weiter
         const a = !!(gp && gp.buttons[4] && gp.buttons[4].pressed);
         if (a && !st.btnA) this.mech.next();
         st.btnA = a;
 
-        const hit = grab ? null : this._rayFrom(st.ctrl);
+        const hit = grab || st.worldGrab ? null : this._rayFrom(st.ctrl);
         st.line.scale.z = hit ? hit.distance : 2;
         st.line.visible = !st.src.hand || !!hit;
         if (hit && hit.object === this.ui.panel) panelUV = hit.uv;
@@ -280,6 +386,10 @@ export class Input {
       }
       this.ui.setHover(panelUV);
       this._hoverFragment(anyHover);
+      this._worldUpdate();
+    } else if (this.world) {
+      for (const st of this.ctrls) st.worldGrab = false;
+      this.world = null;
     }
     this._applyGrabs();
   }

@@ -50,7 +50,11 @@ Zum Testen am Rechner ohne Brille eignet sich auch die Browser-Erweiterung
 | Molekül greifen & bewegen | Atom anklicken und ziehen | Trigger/Pinch auf ein Atom (auch per Strahl aus der Ferne) oder Grip-Taste in der Nähe |
 | Molekül drehen | Rechtsklick oder Shift + ziehen | Hand drehen |
 | Molekül heranholen/wegschieben | – | Thumbstick vor/zurück (bei Strahl-Griff) |
-| Ansicht drehen / Zoom | Hintergrund ziehen / Mausrad | – |
+| Ansicht drehen / Zoom | Hintergrund ziehen / Mausrad | Um die Moleküle herumgehen (Spielbereich „Roomscale“). Oder: Thumbstick links/rechts dreht den Molekülraum in 30°-Schritten; **Grip-Taste ins Leere** greift den ganzen Molekülraum (eine Hand: verschieben, beide Hände: drehen und durch Auseinanderziehen zoomen, 1 Å = 4–40 cm) |
+| Ansicht zurücksetzen | – | Panel „Ansicht zurücksetzen“ (auch automatisch bei jedem Neustart/Reaktionswechsel und beim Verlassen von VR) |
+
+**Startansicht:** Jede Szene wird beim Laden automatisch mittig vor der Person platziert (`src/framing.js`):
+immer derselbe Maßstab (1 Å = 10 cm), Szenenmitte auf 1,15 m Höhe, vorderstes Atom mindestens 45 cm entfernt.
 | Nächster Schritt (Schrittmodus) | Leertaste oder „Weiter ▶“ | A/X-Taste oder Panel |
 | Menü | Leiste unten | Panel links vorne (mit dem Strahl antippen) |
 | Steuerungshilfe ein/aus | Taste H oder „ausblenden“ / „? Steuerung“ | – |
@@ -114,8 +118,11 @@ src/molecules.js    Molekülvorlagen, Szenarien, Namen
 src/view.js         Three.js-Darstellung (Kugel-Stab, Ladungen, Halos, Pfeile, Namen)
 src/input.js        Maus/Touch und WebXR-Controller/Handtracking
 src/ui.js           HTML-Overlay und VR-Panel
+src/conformer.js    Konformationssuche (Drehung um Einfachbindungen)
+src/framing.js      Startansicht je Szene (mittig, gleicher Maßstab, Mindestabstand)
 src/demo.js         Automatische Vorführung
 test/run.mjs        Headless-Test (Node), ohne Browser
+test/xr-view.html   Browser-Test der VR-Ansichtssteuerung (simulierte Hände)
 ```
 
 **Wie die Animation entsteht:** Es gibt keine vorgefertigten Keyframes. Jede Bindung hat eine
@@ -123,6 +130,12 @@ Bindungsordnung, die über die Zeit animiert wird (0 → 1 entsteht, 2 → 1 kla
 Kraftfeld leitet daraus in jedem Frame Bindungslängen und Bindungswinkel ab (sp³ 109,5°, sp² 120°,
 Wasser 104,5° …). Die Atome bewegen sich deshalb von selbst plausibel, und das tetraedrische
 Zwischenprodukt entsteht ohne Handarbeit.
+
+**Konformationen:** Nach jeder Reaktion drehen sich die Produkte sichtbar um ihre Einfachbindungen in die
+energetisch günstigste Konformation (`src/conformer.js`). Startmoleküle liegen sofort so vor. Das Modell
+ist bewusst einfach: Torsionsbarriere für sp³–sp³-Bindungen (gestaffelt), syn/Z-Präferenz für O=C–O–X
+(Carbonsäure, Ester) und sterische Abstoßung. Daraus ergeben sich z. B. der Z-Ester mit anti-stehender
+Ethylgruppe, die syn-Carbonsäure, gestaffeltes Ethan-/Butan-Gerüst und anti-1,2-Dibromethan.
 
 **Wie Reaktionen erkannt werden:** Die Regeln arbeiten auf dem Bindungsgraphen und nicht auf
 festen Atomen. Sie erkennen z. B. „Carbonyl-C mit C=O und O–H, Sauerstoff protoniert“ oder

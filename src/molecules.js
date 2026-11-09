@@ -5,6 +5,7 @@
 // tag.catalyst: das katalytische Proton.
 
 import { V, Q } from './vec.js';
+import { optimizeNow } from './conformer.js';
 
 /**
  * Drei Richtungen, die mit der Bindung zum Elternatom (entlang -u) einen
@@ -208,6 +209,7 @@ export function spawn(sim, name, offset = [0, 0, 0], rot = Q.identity()) {
   );
   for (const [a, b, o] of tpl.bonds) sim.setBond(ids[a], ids[b], o, 0);
   sim.relax(250);
+  if (optimizeNow(sim, ids)) sim.relax(80); // günstigste Konformation
   return ids;
 }
 
